@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/style.css" />
+<title>Viewer</title>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h2>Viewer</h2>
+<span class="badge" id="badge">—</span>
+</div>
+<div class="card">
+<video id="remote" playsinline autoplay controls></video>
+<div class="row" style="margin-top:12px;">
+<button class="btn" id="mute">Mute Mic</button>
+<button class="btn" id="unmute">Unmute Mic</button>
+<button class="btn" id="stopCam">Stop Camera</button>
+<button class="btn" id="startCam">Start Camera</button>
+</div>
+</div>
+<div class="card" style="margin-top:12px;">
+<div class="badge">Publisher Info</div>
+<div class="kv small" id="info"></div>
+</div>
+<div class="card" style="margin-top:12px;">
+<div class="badge">Live Location</div>
+<div id="loc" class="small">—</div>
+12
+</div>
+</div>
+<script type="module">
+import { fmtTs, qs, el, iceServers } from './utils.js';
+const params = new URLSearchParams(location.search);
+const userId = Number(params.get('userId'));
+qs('#badge').textContent = `User #${userId}`;
+// load static info
+async function loadInfo(){
+const r = await fetch(`/api/user/${userId}`);
+const j = await r.json();
+if (!j.ok) return;
+const u = j.user;
+const box = qs('#info');
+box.innerHTML = '';
+box.append(
+el('div',{},'User ID'), el('div',{}, String(u.id)),
+el('div',{},'IP'), el('div',{}, u.ip||'—'),
+el('div',{},'Status'), el('div',{}, u.status),
+el('div',{},'Has Video'), el('div',{}, u.hasVideo?'yes':'no'),
+el('div',{},'Has Audio'), el('div',{}, u.hasAudio?'yes':'no'),
+el('div',{},'Last Seen'), el('div',{}, fmtTs(u.lastSeen ||
+u.createdAt))
+);
+}
+// WebRTC viewer flow (viewer creates offer)
+let pc, ws;
+async function connect(){
+pc = new RTCPeerConnection({ iceServers: iceServers() });
+pc.ontrack = (ev) => { qs('#remote').srcObject = ev.streams[0]; };
+ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://
+${location.host}/ws?role=viewer&userId=${userId}`);
+ws.onopen = async () => {
+const offer = await pc.createOffer();
+await pc.setLocalDescription(offer);
+ws.send(JSON.stringify({ type:'viewer-offer', sdp: offer.sdp }));
+};
+ws.onmessage = async (ev) => {
+const msg = JSON.parse(ev.data);
+if (msg.type === 'publisher-answer' && msg.sdp) {
+await pc.setRemoteDescription({ type:'answer', sdp: msg.sdp });
+} else if (msg.type === 'ice' && msg.candidate) {
+try { await pc.addIceCandidate(msg.candidate); } catch {}
+} else if (msg.type === 'status' && msg.user) {
+13
+// update small status card
+loadInfo();
+} else if (msg.type === 'location') {
+qs('#loc').textContent = `Lat ${msg.lat.toFixed(6)}, Lon $
+{msg.lon.toFixed(6)} (±${Math.round(msg.acc)} m) @ ${new
+Date(msg.ts).toLocaleString()}`;
+}
+};
+pc.onicecandidate = (e) => { if (e.candidate) ws.send(JSON.stringify({
+type:'ice', role:'viewer', to:'publisher', candidate: e.candidate })); };
+// control buttons
+qs('#mute').onclick = () => ws.send(JSON.stringify({
+type:'command', action:'muteMic' }));
+qs('#unmute').onclick = () => ws.send(JSON.stringify({
+type:'command', action:'unmuteMic' }));
+qs('#stopCam').onclick = () => ws.send(JSON.stringify({
+type:'command', action:'stopCam' }));
+qs('#startCam').onclick= () => ws.send(JSON.stringify({
+type:'command', action:'startCam' }));
+}
+loadInfo();
+connect();
+setInterval(loadInfo, 5000);
+</script>
+</body>
+</html>
