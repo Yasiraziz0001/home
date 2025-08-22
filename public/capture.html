@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/style.css" />
+<title>Capture (Publisher)</title>
+</head>
+<body>
+<div class="container">
+<div class="header"><h2>Publisher</h2><span class="badge">Open me on 
+Phone‑1</span></div>
+<div class="card">
+<div class="row">
+<button id="start" class="btn primary">Start (Allow Camera/Mic/
+Location)</button>
+<span id="info" class="badge">Not started</span>
+</div>
+<div style="margin-top:12px;" class="small">Keep the screen awake and 
+phone on charge for long sessions.</div>
+<video id="preview" playsinline autoplay muted></video>
+<div id="meta" class="kv small" style="margin-top:12px;"></div>
+</div>
+</div>
+<script type="module">
+import { fmtTs, qs, el, iceServers } from './utils.js';
+let userId = null;
+let pcMap = new Map(); // viewerConnId -> RTCPeerConnection
+let localStream = null;
+let ws = null;
+async function register() {
+const r = await fetch('/api/register', { method:'POST' });
+const j = await r.json();
+8
+if (!j.ok) throw new Error('Register failed');
+userId = j.id;
+qs('#info').textContent = `Registered as User #${userId} (IP: $
+{j.ip})`;
+renderMeta({ ip:j.ip, registeredAt: new Date().toISOString() });
+}
+function renderMeta({ ip, registeredAt }){
+const meta = qs('#meta');
+meta.innerHTML = '';
+meta.append(
+el('div',{},'User ID'), el('div',{}, String(userId)),
+el('div',{},'IP'), el('div',{}, ip||'—'),
+el('div',{},'Registered'), el('div',{}, fmtTs(registeredAt))
+);
+}
+function connectWS(){
+ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://
+${location.host}/ws?role=publisher&userId=${userId}`);
+ws.onopen = () => console.log('WS connected');
+ws.onmessage = async (ev) => {
+const msg = JSON.parse(ev.data);
+if (msg.type === 'viewer-offer') {
+// new viewer wants to connect
+const pc = new RTCPeerConnection({ iceServers: iceServers() });
+localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+pc.onicecandidate = (e) => { if (e.candidate)
+ws.send(JSON.stringify({ type:'ice', role:'publisher', to: msg.fromViewer,
+candidate: e.candidate })); };
+await pc.setRemoteDescription({ type:'offer', sdp: msg.sdp });
+const answer = await pc.createAnswer();
+await pc.setLocalDescription(answer);
+ws.send(JSON.stringify({ type:'publisher-answer', toViewer:
+msg.fromViewer, sdp: answer.sdp }));
+pcMap.set(msg.fromViewer, pc);
+} else if (msg.type === 'ice' && msg.fromViewer) {
+const pc = pcMap.get(msg.fromViewer);
+if (pc) await pc.addIceCandidate(msg.candidate);
+} else if (msg.type === 'command') {
+if (msg.action === 'muteMic')
+localStream.getAudioTracks().forEach(t=> t.enabled=false);
+if (msg.action === 'unmuteMic')
+localStream.getAudioTracks().forEach(t=> t.enabled=true);
+if (msg.action === 'stopCam')
+localStream.getVideoTracks().forEach(t=> t.enabled=false);
+if (msg.action === 'startCam')
+localStream.getVideoTracks().forEach(t=> t.enabled=true);
+// reflect status
+ws.send(JSON.stringify({ type:'status', hasVideo:
+localStream.getVideoTracks().some(t=>t.enabled), hasAudio:
+9
+localStream.getAudioTracks().some(t=>t.enabled) }));
+}
+};
+}
+function sendLocation(ws){
+if (!('geolocation' in navigator)) return;
+navigator.geolocation.watchPosition(pos => {
+const payload = { type:'location', lat: pos.coords.latitude, lon:
+pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
+try { ws?.readyState === 1 && ws.send(JSON.stringify(payload)); }
+catch {}
+}, err => console.log('Geo error', err), { enableHighAccuracy:true,
+maximumAge:5000, timeout:10000 });
+}
+async function start(){
+await register();
+try {
+localStream = await navigator.mediaDevices.getUserMedia({ video: {
+facingMode: 'environment' }, audio: true });
+} catch (e) {
+alert('Please allow camera and microphone. '+ e.message);
+return;
+}
+const vid = qs('#preview');
+vid.srcObject = localStream;
+connectWS();
+sendLocation(ws);
+// initial status push
+const hasVideo = localStream.getVideoTracks().some(t=>t.enabled);
+const hasAudio = localStream.getAudioTracks().some(t=>t.enabled);
+ws.addEventListener('open', () => ws.send(JSON.stringify({
+type:'status', hasVideo, hasAudio })));
+}
+qs('#start').addEventListener('click', start);
+</script>
+</body>
+</html>
