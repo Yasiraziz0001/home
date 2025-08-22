@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+10
+<link rel="stylesheet" href="/style.css" />
+<title>Dashboard</title>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h2>Dashboard</h2>
+<div class="row">
+<button id="refresh" class="btn">Refresh</button>
+<span class="badge">Open capture link on a phone: <code>/
+capture.html</code></span>
+</div>
+</div>
+<div class="card">
+<table class="table" id="table">
+<thead>
+<tr>
+<th>#</th>
+<th>IP</th>
+<th>Status</th>
+<th>Video</th>
+<th>Audio</th>
+<th>Last Seen</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+<div class="small" style="margin-top:8px;">Users are assigned in order 
+of first open: User 1, User 2, ...</div>
+</div>
+</div>
+<script type="module">
+import { fmtTs, qs, el } from './utils.js';
+async function load(){
+const r = await fetch('/api/users');
+const j = await r.json();
+const tb = document.querySelector('#table tbody');
+tb.innerHTML = '';
+j.users.forEach(u => {
+const tr = document.createElement('tr');
+tr.append(
+el('td',{}, u.id),
+el('td',{}, u.ip || '—'),
+el('td',{}, u.status),
+el('td',{}, u.hasVideo ? 'on' : 'off'),
+el('td',{}, u.hasAudio ? 'on' : 'off'),
+el('td',{}, fmtTs(u.lastSeen || u.createdAt)),
+11
+el('td',{}, el('a',{ href:`/view.html?userId=${u.id}` }, 'Open'))
+);
+tb.append(tr);
+});
+}
+qs('#refresh').addEventListener('click', load);
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>
