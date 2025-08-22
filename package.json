@@ -1,20 +1,17 @@
 {
-"name": "webrtc-capture",
-"version": "1.0.0",
-"description":
-"Browser-based CCTV: capture camera/mic/location to your own site via 
-WebRTC",
-"main": "server.js",
-"scripts": {
-"start": "node server.js"
-},
-"dependencies": {
-"cors": "^2.8.5",
-1
-"dotenv": "^16.4.5",
-"express": "^4.19.2",
-"helmet": "^7.1.0",
-"uuid": "^9.0.1",
-"ws": "^8.18.0"
-}
+  "name": "webrtc-capture",
+  "version": "1.0.0",
+  "description": "Browser-based CCTV: capture camera/mic/location to your own site via WebRTC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.0"
+  }
 }
